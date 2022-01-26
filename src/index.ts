@@ -744,13 +744,6 @@ class SlackReporter extends WDIOReporter {
               hookStats
             ) as ChatPostMessageArguments,
           });
-        } else {
-          this._slackRequestQueue.push({
-            type: SLACK_REQUEST_TYPE.WEBHOOK_SEND,
-            payload: this.createFailedTestPayload(
-              hookStats
-            ) as ChatPostMessageArguments,
-          });
         }
       }
     }
@@ -783,13 +776,6 @@ class SlackReporter extends WDIOReporter {
           });
           this._lastScreenshotBuffer = undefined;
         }
-      } else {
-        this._slackRequestQueue.push({
-          type: SLACK_REQUEST_TYPE.WEBHOOK_SEND,
-          payload: this.createFailedTestPayload(
-            testStats
-          ) as ChatPostMessageArguments,
-        });
       }
     }
   }

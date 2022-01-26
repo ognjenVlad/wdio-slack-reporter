@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { ChatPostMessageArguments, FilesUploadArguments } from '@slack/web-api';
-import { IncomingWebhookSendArguments } from '@slack/webhook';
 import { RunnerStats, TestStats } from '@wdio/reporter';
 import { Reporters } from '@wdio/types';
 import { SLACK_REQUEST_TYPE } from './constants';
@@ -10,10 +9,6 @@ export {
   FilesUploadArguments,
   WebAPICallResult,
 } from '@slack/web-api';
-export {
-  IncomingWebhookResult,
-  IncomingWebhookSendArguments,
-} from '@slack/webhook';
 
 export { RunnerStats, TestStats } from '@wdio/reporter';
 
@@ -67,17 +62,17 @@ export interface SlackReporterOptions extends Reporters.Options {
   notifyTestFinishMessage?: boolean;
   createStartPayload?: (
     runnerStats: RunnerStats
-  ) => ChatPostMessageArguments | IncomingWebhookSendArguments;
+  ) => ChatPostMessageArguments;
   createFailedTestPayload?: (
     testStats: TestStats
-  ) => ChatPostMessageArguments | IncomingWebhookSendArguments;
+  ) => ChatPostMessageArguments;
   createResultPayload?: (
     runnerStats: RunnerStats,
     stateCounts: StateCount
-  ) => ChatPostMessageArguments | IncomingWebhookSendArguments;
+  ) => ChatPostMessageArguments;
 }
 
-export type SlackRequestType = PostMessage | Upload | Send;
+export type SlackRequestType = PostMessage | Upload;
 
 interface PostMessage {
   type: typeof SLACK_REQUEST_TYPE.WEB_API_POST_MESSAGE;
@@ -87,8 +82,4 @@ interface PostMessage {
 interface Upload {
   type: typeof SLACK_REQUEST_TYPE.WEB_API_UPLOAD;
   payload: FilesUploadArguments;
-}
-interface Send {
-  type: typeof SLACK_REQUEST_TYPE.WEBHOOK_SEND;
-  payload: IncomingWebhookSendArguments;
 }

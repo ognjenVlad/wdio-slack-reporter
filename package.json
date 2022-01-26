@@ -6,7 +6,7 @@
     "email": "ogauzz1@gmail.com"
   },
   "license": "MIT",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "main": "build/index.js",
   "types": "build/index.d.ts",
   "keywords": [
@@ -22,7 +22,9 @@
     "type": "git",
     "url": "https://github.com/ognjenVlad/wdio-slack-reporter.git"
   },
-  "scripts": {},
+  "scripts": {
+    "build": "yarn tsc"
+  },
   "dependencies": {
     "@slack/types": "^2.0.0",
     "@slack/web-api": "^6.1.0",

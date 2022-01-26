@@ -1,4 +1,4 @@
-# @ognjenVlad/wdio-slack-reporter
+# @ognjenvladisavljevic/wdio-slack-reporter
 
 Reporter from [WebdriverIO](https://webdriver.io/) using [Web API](https://api.slack.com/web) to send results to [Slack](https://slack.com/).<br />
 This project is Compatible with [WebdriverIO](https://webdriver.io/) version 6.x and above.
@@ -14,12 +14,12 @@ This project is Compatible with [WebdriverIO](https://webdriver.io/) version 6.x
 
 ## Installation
 
-The easiest way is to keep `@ognjenvlad/wdio-slack-reporter` as a devDependency in your `package.json`.
+The easiest way is to keep `@ognjenvladisavljevic/wdio-slack-reporter` as a devDependency in your `package.json`.
 
 ```json
 {
   "devDependencies": {
-    "@ognjenvlad/wdio-slack-reporter": "1.0.0"
+    "@ognjenvladisavljevic/wdio-slack-reporter": "1.0.0"
   }
 }
 ```
@@ -29,13 +29,13 @@ You can simple do it by:
 - NPM
 
 ```bash
-npm install @ognjenvlad/wdio-slack-reporter --save-dev
+npm install @ognjenvladisavljevic/wdio-slack-reporter --save-dev
 ```
 
 - Yarn
 
 ```bash
-yarn add -D @ognjenvlad/wdio-slack-reporter
+yarn add -D @ognjenvladisavljevic/wdio-slack-reporter
 ```
 
 Instructions on how to install `WebdriverIO` can be found [here](https://webdriver.io/docs/gettingstarted.html).
@@ -48,7 +48,7 @@ At the top of the wdio.conf.js-file, add:
 
 ```js
 // wdio.conf.js
-import SlackReporter from '@ognjenvlad/wdio-slack-reporter';
+import SlackReporter from '@ognjenvladisavljevic/wdio-slack-reporter';
 ```
 
 In order to use the reporter you need to add slack to your reporters array in wdio.conf.js
