@@ -6,11 +6,6 @@ import {
   WebAPICallResult,
   WebClient,
 } from '@slack/web-api';
-import {
-  IncomingWebhook,
-  IncomingWebhookResult,
-  IncomingWebhookSendArguments,
-} from '@slack/webhook';
 import getLogger from '@wdio/logger';
 import WDIOReporter, {
   HookStats,
@@ -52,7 +47,6 @@ class SlackReporter extends WDIOReporter {
     skipped: 0,
   };
   private _client?: WebClient;
-  private _webhook?: IncomingWebhook;
   private _channel?: string;
   private _symbols: EmojiSymbols;
   private _title?: string;
@@ -114,17 +108,6 @@ class SlackReporter extends WDIOReporter {
         );
         log.debug('RESULT', this.createResultDetailPayload.toString());
       }
-    } else {
-      this._webhook = new IncomingWebhook(options.slackOptions.webhook, {
-        username: options.slackOptions.slackName || SLACK_NAME,
-        icon_url: options.slackOptions.slackIconUrl || SLACK_ICON_URL,
-      });
-      log.info('Created Slack Webhook Instance.');
-      log.debug('IncomingWebhook', {
-        webhook: options.slackOptions.webhook,
-        username: options.slackOptions.slackName || SLACK_NAME,
-        icon_url: options.slackOptions.slackIconUrl || SLACK_ICON_URL,
-      });
     }
     this._symbols = {
       passed: options.emojiSymbols?.passed || EMOJI_SYMBOLS.PASSED,
@@ -155,25 +138,8 @@ class SlackReporter extends WDIOReporter {
 
     this._interval = global.setInterval(this.sync.bind(this), 100);
 
-    if (options.createStartPayload) {
-      this.createStartPayload = options.createStartPayload.bind(this);
-      log.info('The [createStartPayload] function has been overridden.');
-      log.debug('RESULT', this.createStartPayload.toString());
-    }
-    if (options.createFailedTestPayload) {
-      this.createFailedTestPayload = options.createFailedTestPayload.bind(this);
-      log.info('The [createFailedTestPayload] function has been overridden.');
-      log.debug('RESULT', this.createFailedTestPayload.toString());
-    }
-    if (options.createResultPayload) {
-      this.createResultPayload = options.createResultPayload.bind(this);
-      log.info('The [createResultPayload] function has been overridden.');
-      log.debug('RESULT', this.createResultPayload.toString());
-    }
-
     process.on(EVENTS.POST_MESSAGE, this.postMessage.bind(this));
     process.on(EVENTS.UPLOAD, this.upload.bind(this));
-    process.on(EVENTS.SEND, this.send.bind(this));
     process.on(EVENTS.SCREENSHOT, this.uploadFailedTestScreenshot.bind(this));
   }
 
@@ -230,24 +196,6 @@ class SlackReporter extends WDIOReporter {
       process.once(EVENTS.RESULT, ({ result, error }) => {
         if (result) {
           resolve(result as WebAPICallResult);
-        }
-        reject(error);
-      });
-    });
-  }
-  /**
-   * Send from Slack webhook
-   * @param  {IncomingWebhookSendArguments} payload Parameters used by Slack webhook
-   * @return {IncomingWebhookResult}
-   */
-  static async send(
-    payload: IncomingWebhookSendArguments
-  ): Promise<IncomingWebhookResult> {
-    return new Promise((resolve, reject) => {
-      process.emit(EVENTS.SEND, payload);
-      process.once(EVENTS.RESULT, ({ result, error }) => {
-        if (result) {
-          resolve(result as IncomingWebhookResult);
         }
         reject(error);
       });
@@ -330,30 +278,6 @@ class SlackReporter extends WDIOReporter {
     throw new Error(ERROR_MESSAGES.NOT_USING_WEB_API);
   }
 
-  private async send(
-    payload: IncomingWebhookSendArguments
-  ): Promise<IncomingWebhookResult> {
-    if (this._webhook) {
-      try {
-        log.debug('COMMAND', `send(${payload})`);
-        this._pendingSlackRequestCount++;
-        const result = await this._webhook.send(payload);
-        log.debug('RESULT', util.inspect(result));
-        process.emit(EVENTS.RESULT, { result, error: undefined });
-        return result;
-      } catch (error) {
-        log.error(error);
-        process.emit(EVENTS.RESULT, { result: undefined, error });
-        throw error;
-      } finally {
-        this._pendingSlackRequestCount--;
-      }
-    }
-
-    log.error(ERROR_MESSAGES.NOT_USING_WEBHOOK);
-    throw new Error(ERROR_MESSAGES.NOT_USING_WEBHOOK);
-  }
-
   get isSynchronised(): boolean {
     return (
       this._pendingSlackRequestCount === 0 && this._isSynchronizing === false
@@ -391,7 +315,7 @@ class SlackReporter extends WDIOReporter {
 
   private async next() {
     const request = this._slackRequestQueue.shift();
-    let result: WebAPICallResult | IncomingWebhookResult;
+    let result: WebAPICallResult;
 
     log.info('POST', `Slack Request ${request?.type}`);
     log.debug('DATA', util.inspect(request?.payload));
@@ -413,23 +337,16 @@ class SlackReporter extends WDIOReporter {
             }
             break;
           }
-          case SLACK_REQUEST_TYPE.WEB_API_UPLOAD: {
-            if (this._client) {
-              result = await this._client.files.upload({
-                ...request.payload,
-                thread_ts: this._lastSlackWebAPICallResult?.ts as string,
-              });
-              log.debug('RESULT', util.inspect(result));
-            }
-            break;
-          }
-          case SLACK_REQUEST_TYPE.WEBHOOK_SEND: {
-            if (this._webhook) {
-              result = await this._webhook.send(request.payload);
-              log.debug('RESULT', util.inspect(result));
-            }
-            break;
-          }
+          // case SLACK_REQUEST_TYPE.WEB_API_UPLOAD: {
+          //   if (this._client) {
+          //     result = await this._client.files.upload({
+          //       ...request.payload,
+          //       thread_ts: this._lastSlackWebAPICallResult?.ts as string,
+          //     });
+          //     log.debug('RESULT', util.inspect(result));
+          //   }
+          //   break;
+          // }
         }
       } catch (error) {
         log.error(error);
@@ -540,7 +457,9 @@ class SlackReporter extends WDIOReporter {
 
   private createStartPayload(
     runnerStats: RunnerStats
-  ): ChatPostMessageArguments | IncomingWebhookSendArguments {
+  ): ChatPostMessageArguments {
+    const testName= runnerStats.specs[0];
+    const specName = testName.substring(testName.lastIndexOf('\\') + 1);
     const text = `${
       this._title ? '*Title*: `' + this._title + '`\n' : ''
     }${this.getEnviromentCombo(
@@ -548,18 +467,17 @@ class SlackReporter extends WDIOReporter {
       runnerStats.isMultiremote
     )}`;
 
-    const payload: ChatPostMessageArguments | IncomingWebhookSendArguments = {
+    const payload: ChatPostMessageArguments = {
       channel: this._channel,
       text: `${this._symbols.start} Start testing${
         this._title ? 'for ' + this._title : ''
       }`,
       blocks: [
         {
-          type: 'header',
+          type: 'section',
           text: {
-            type: 'plain_text',
-            text: `${this._symbols.start} Start testing`,
-            emoji: true,
+            type: 'mrkdwn',
+            text: this._symbols.start + '``` Starting tests ${specName}```'
           },
         },
       ],
@@ -577,20 +495,19 @@ class SlackReporter extends WDIOReporter {
 
   private createFailedTestPayload(
     hookAndTest: HookStats | TestStats
-  ): ChatPostMessageArguments | IncomingWebhookSendArguments {
+  ): ChatPostMessageArguments {
     const stack = hookAndTest.error?.stack
       ? '```' + this.convertErrorStack(hookAndTest.error.stack) + '```'
       : '';
-    const payload: ChatPostMessageArguments | IncomingWebhookSendArguments = {
+    const payload: ChatPostMessageArguments = {
       channel: this._channel,
       text: `${this._symbols.failed} Test failure`,
       blocks: [
         {
-          type: 'header',
+          type: 'section',
           text: {
-            type: 'plain_text',
-            text: `${this._symbols.failed} Test failure`,
-            emoji: true,
+            type: 'mrkdwn',
+            text: this._symbols.failed + ' ```Test failure ```'
           },
         },
       ],
@@ -625,23 +542,22 @@ class SlackReporter extends WDIOReporter {
   private createResultPayload(
     runnerStats: RunnerStats,
     stateCounts: StateCount
-  ): ChatPostMessageArguments | IncomingWebhookSendArguments {
+  ): ChatPostMessageArguments {
     const resltsUrl = SlackReporter.getResultsUrl();
     const counts = this.getCounts(stateCounts);
-    const payload: ChatPostMessageArguments | IncomingWebhookSendArguments = {
+    const payload: ChatPostMessageArguments = {
       channel: this._channel,
       text: `${this._symbols.finished} End of test${
         this._title ? ' - ' + this._title : ''
       }\n${counts}`,
       blocks: [
         {
-          type: 'header',
+          type: 'section',
           text: {
-            type: 'plain_text',
+            type: 'mrkdwn',
             text: `${this._symbols.finished} End of test - ${
               this._symbols.watch
             } ${runnerStats.duration / 1000}s`,
-            emoji: true,
           },
         },
       ],
@@ -662,9 +578,9 @@ class SlackReporter extends WDIOReporter {
   private createResultDetailPayload(
     runnerStats: RunnerStats,
     stateCounts: StateCount
-  ): ChatPostMessageArguments | IncomingWebhookSendArguments {
+  ): ChatPostMessageArguments {
     const counts = this.getCounts(stateCounts);
-    const payload: ChatPostMessageArguments | IncomingWebhookSendArguments = {
+    const payload: ChatPostMessageArguments = {
       channel: this._channel,
       text: `${this._title ? this._title + '\n' : ''}${counts}`,
       blocks: [
@@ -802,14 +718,6 @@ class SlackReporter extends WDIOReporter {
               runnerStats
             ) as ChatPostMessageArguments,
           });
-        } else if (this._webhook) {
-          log.info('INFO', `ON RUNNER START: SEND`);
-          this._slackRequestQueue.push({
-            type: SLACK_REQUEST_TYPE.WEBHOOK_SEND,
-            payload: this.createStartPayload(
-              runnerStats
-            ) as IncomingWebhookSendArguments,
-          });
         }
       } catch (error) {
         log.error(error);
@@ -821,17 +729,7 @@ class SlackReporter extends WDIOReporter {
   // onBeforeCommand(commandArgs: BeforeCommandArgs): void {}
   // onAfterCommand(commandArgs: AfterCommandArgs): void {}
 
-  onSuiteStart(suiteStats: SuiteStats): void {
-    this._currentSuite = suiteStats;
-
-    this._suiteUids.add(suiteStats.uid);
-    if (suiteStats.type === 'feature') {
-      this._indents = 0;
-      this._suiteIndents[suiteStats.uid] = this._indents;
-    } else {
-      this._suiteIndents[suiteStats.uid] = ++this._indents;
-    }
-  }
+  onSuiteStart(suiteStats: SuiteStats): void {}
 
   // onHookStart(hookStat: HookStats): void {}
   onHookEnd(hookStats: HookStats): void {
@@ -928,14 +826,6 @@ class SlackReporter extends WDIOReporter {
               isDetailResult: true,
             });
           }
-        } else {
-          this._slackRequestQueue.push({
-            type: SLACK_REQUEST_TYPE.WEBHOOK_SEND,
-            payload: this.createResultPayload(
-              runnerStats,
-              this._stateCounts
-            ) as IncomingWebhookSendArguments,
-          });
         }
       } catch (error) {
         log.error(error);
@@ -966,15 +856,11 @@ declare global {
         event: typeof EVENTS.UPLOAD,
         payload: FilesUploadArguments
       ): Promise<WebAPICallResult>;
-      emit(
-        event: typeof EVENTS.SEND,
-        payload: IncomingWebhookSendArguments
-      ): boolean;
       emit(event: typeof EVENTS.SCREENSHOT, buffer: Buffer): boolean;
       emit(
         event: typeof EVENTS.RESULT,
         args: {
-          result: WebAPICallResult | IncomingWebhookResult | undefined;
+          result: WebAPICallResult | undefined;
           error: any;
         }
       ): boolean;
@@ -990,19 +876,13 @@ declare global {
         listener: (payload: FilesUploadArguments) => Promise<WebAPICallResult>
       ): this;
       on(
-        event: typeof EVENTS.SEND,
-        listener: (
-          payload: IncomingWebhookSendArguments
-        ) => Promise<IncomingWebhookResult>
-      ): this;
-      on(
         event: typeof EVENTS.SCREENSHOT,
         listener: (buffer: Buffer) => void
       ): this;
       once(
         event: typeof EVENTS.RESULT,
         listener: (args: {
-          result: WebAPICallResult | IncomingWebhookResult | undefined;
+          result: WebAPICallResult | undefined;
           error: any;
         }) => Promise<void>
       ): this;
