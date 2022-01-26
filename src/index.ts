@@ -26,6 +26,7 @@ import {
   EVENTS,
   SLACK_REQUEST_TYPE,
   FINISHED_COLOR,
+  TEST_RESULT
 } from './constants';
 import {
   SlackRequestType,
@@ -46,6 +47,8 @@ class SlackReporter extends WDIOReporter {
     failed: 0,
     skipped: 0,
   };
+  private _passedTests: string[]
+  private _failedTests: string[]
   private _client?: WebClient;
   private _channel?: string;
   private _symbols: EmojiSymbols;
@@ -455,11 +458,24 @@ class SlackReporter extends WDIOReporter {
     return `${this._symbols.passed} Passed: ${stateCounts.passed} | ${this._symbols.failed} Failed: ${stateCounts.failed} | ${this._symbols.skipped} Skipped: ${stateCounts.skipped}`;
   }
 
+  /**
+   * Indent a suite based on where how it's nested
+   * @param  {string[]} tests Test titles to display
+   * @return {String}     String to the test titles to be displayed in Slack
+   */
+   private getTests(tests: string[], type: string, symbol: string): string {
+    let result = `\n\n*${type} tests: *\n`
+    tests.forEach(test => {
+      result += `${test} : ${symbol}\n`
+    });
+    return result
+  }
+
   private createStartPayload(
     runnerStats: RunnerStats
   ): ChatPostMessageArguments {
     const testName= runnerStats.specs[0];
-    const specName = testName.substring(testName.lastIndexOf('\\') + 1);
+    const specName = testName.substring(testName.lastIndexOf('/') + 1);
     const text = `${
       this._title ? '*Title*: `' + this._title + '`\n' : ''
     }${this.getEnviromentCombo(
@@ -545,8 +561,10 @@ class SlackReporter extends WDIOReporter {
   ): ChatPostMessageArguments {
     const resltsUrl = SlackReporter.getResultsUrl();
     const counts = this.getCounts(stateCounts);
+    const passedTests = this.getTests(this._passedTests, TEST_RESULT.PASSED_TESTS, this._symbols.passed)
+    const failedTests = this.getTests(this._failedTests, TEST_RESULT.FAILED_TESTS, this._symbols.failed)
     const testName= runnerStats.specs[0];
-    const specName = testName.substring(testName.lastIndexOf('\\') + 1);
+    const specName = testName.substring(testName.lastIndexOf('/') + 1);
     const payload: ChatPostMessageArguments = {
       channel: this._channel,
       text: `${this._symbols.finished} End of test${
@@ -566,9 +584,7 @@ class SlackReporter extends WDIOReporter {
       attachments: [
         {
           color: FINISHED_COLOR,
-          text: `${this._title ? `*Title*: \`${this._title}\`\n` : ''}${
-            resltsUrl ? `*Results*: <${resltsUrl}>\n` : ''
-          }${counts}`,
+          text: `${resltsUrl ? `*Results*: <${resltsUrl}>\n` : ''}${counts}${passedTests}${failedTests}`,
           ts: Date.now().toString(),
         },
       ],
@@ -754,9 +770,11 @@ class SlackReporter extends WDIOReporter {
   // onTestStart(testStats: TestStats): void {}
   onTestPass(testStats: TestStats): void {
     this._stateCounts.passed++;
+    this._passedTests.push(testStats.title)
   }
   onTestFail(testStats: TestStats): void {
     this._stateCounts.failed++;
+    this._failedTests.push(testStats.title)
 
     if (this._notifyFailedCase) {
       if (this._client) {

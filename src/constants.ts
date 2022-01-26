@@ -37,3 +37,8 @@ export const ERROR_MESSAGES = {
   DISABLED_OPTIONS:
     'Disabled notifyFailedCase or uploadScreenshotOfFailedCase options.',
 } as const;
+
+export const TEST_RESULT = {
+  PASSED_TESTS: 'Passed',
+  FAILED_TESTS: 'Failed',
+} as const;
