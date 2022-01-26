@@ -465,7 +465,7 @@ class SlackReporter extends WDIOReporter {
    */
    private getTests(tests: string[], type: string, symbol: string): string {
     if (!tests || tests.length == 0) {
-      return ''
+      return '\n'
     }
     let result = `\n\n*${type} tests: *\n`
     result += "```\n"
@@ -473,6 +473,13 @@ class SlackReporter extends WDIOReporter {
       let index = i < 9 ? `0${i + 1}` : `${i + 1}`
       result += `${index} ${symbol} ${test}\n`
     });
+  
+    if (result.length > 3001) {
+      const checkResults = "\nFor full report check results```\n"
+      let truncatedResults = result.substring(0,3001 - (checkResults.length + 10))
+      truncatedResults += checkResults
+      return truncatedResults
+    }
     result += "```\n"
     return result
   }
@@ -588,7 +595,14 @@ class SlackReporter extends WDIOReporter {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `${passedTests}${failedTests}`
+            text: `${passedTests}`
+          },
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `${failedTests}`
           },
         },
       ],
