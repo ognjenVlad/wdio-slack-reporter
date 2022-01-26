@@ -1,5 +1,5 @@
 {
-  "name": "@ognjenvlad/wdio-slack-reporter",
+  "name": "@ognjenvladisavljevic/wdio-slack-reporter",
   "description": "Reporter from WebdriverIO using Web API to send results to Slack.",
   "author": {
     "name": "ognjen Vlad",
@@ -18,9 +18,6 @@
     "slack-reporter",
     "wdio-slack-reporter"
   ],
-  "bugs": {
-    "url": "https://github.com/morooLee/wdio-slack-reporter/issues"
-  },
   "repository": {
     "type": "git",
     "url": "https://github.com/ognjenVlad/wdio-slack-reporter.git"
