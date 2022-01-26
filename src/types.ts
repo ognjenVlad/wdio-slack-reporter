@@ -43,14 +43,8 @@ export interface SlackWebApiOptions {
     stateCounts: StateCount
   ) => ChatPostMessageArguments;
 }
-export interface SlackWebhookOptions {
-  type: 'webhook';
-  webhook: string;
-  slackName?: string;
-  slackIconUrl?: string;
-}
 
-export type SlackOptions = SlackWebApiOptions | SlackWebhookOptions;
+export type SlackOptions = SlackWebApiOptions;
 
 export interface SlackReporterOptions extends Reporters.Options {
   slackOptions?: SlackOptions;
