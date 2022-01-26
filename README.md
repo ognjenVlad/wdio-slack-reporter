@@ -19,7 +19,7 @@ The easiest way is to keep `@ognjenvladisavljevic/wdio-slack-reporter` as a devD
 ```json
 {
   "devDependencies": {
-    "@ognjenvladisavljevic/wdio-slack-reporter": "1.0.0"
+    "@ognjenvladisavljevic/wdio-slack-reporter": "1.0.2"
   }
 }
 ```
