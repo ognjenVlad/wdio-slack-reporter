@@ -428,7 +428,7 @@ class SlackReporter extends WDIOReporter {
         env = browser + (version ? ` (v${version})` : '') + ` on ${platform}`;
       }
 
-      output += isMultiremote ? `- *${driverName}*: ` : '*Driver*: ';
+      output += isMultiremote ? `- ${driverName}: ` : 'Driver: ';
       output += env;
       output += isLastIndex ? '' : '\n';
     });
@@ -452,7 +452,7 @@ class SlackReporter extends WDIOReporter {
    * @return {String}     String to the stat count to be displayed in Slack
    */
   private getCounts(stateCounts: StateCount): string {
-    return `*${this._symbols.passed} Passed: ${stateCounts.passed} | ${this._symbols.failed} Failed: ${stateCounts.failed} | ${this._symbols.skipped} Skipped: ${stateCounts.skipped}*`;
+    return `${this._symbols.passed} Passed: ${stateCounts.passed} | ${this._symbols.failed} Failed: ${stateCounts.failed} | ${this._symbols.skipped} Skipped: ${stateCounts.skipped}`;
   }
 
   private createStartPayload(
@@ -477,7 +477,7 @@ class SlackReporter extends WDIOReporter {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: this._symbols.start + '``` Starting tests ${specName}```'
+            text: `${this._symbols.start} Starting tests ${specName}`
           },
         },
       ],
@@ -507,7 +507,7 @@ class SlackReporter extends WDIOReporter {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: this._symbols.failed + ' ```Test failure ```'
+            text: `${this._symbols.failed} Test failure`
           },
         },
       ],
@@ -545,10 +545,12 @@ class SlackReporter extends WDIOReporter {
   ): ChatPostMessageArguments {
     const resltsUrl = SlackReporter.getResultsUrl();
     const counts = this.getCounts(stateCounts);
+    const testName= runnerStats.specs[0];
+    const specName = testName.substring(testName.lastIndexOf('\\') + 1);
     const payload: ChatPostMessageArguments = {
       channel: this._channel,
       text: `${this._symbols.finished} End of test${
-        this._title ? ' - ' + this._title : ''
+        ' - ' + specName
       }\n${counts}`,
       blocks: [
         {
