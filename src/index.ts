@@ -47,8 +47,8 @@ class SlackReporter extends WDIOReporter {
     failed: 0,
     skipped: 0,
   };
-  private _passedTests: string[]
-  private _failedTests: string[]
+  private _passedTests: string[] = []
+  private _failedTests: string[] = []
   private _client?: WebClient;
   private _channel?: string;
   private _symbols: EmojiSymbols;
