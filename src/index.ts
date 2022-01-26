@@ -465,8 +465,8 @@ class SlackReporter extends WDIOReporter {
    */
    private getTests(tests: string[], type: string, symbol: string): string {
     let result = `\n\n*${type} tests: *\n`
-    tests.forEach(test => {
-      result += `${test} : ${symbol}\n`
+    tests.forEach((test, index) => {
+      result += `${index+1}. ${test}   ${symbol}\n`
     });
     return result
   }
