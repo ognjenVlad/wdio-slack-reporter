@@ -464,10 +464,16 @@ class SlackReporter extends WDIOReporter {
    * @return {String}     String to the test titles to be displayed in Slack
    */
    private getTests(tests: string[], type: string, symbol: string): string {
+    if (!tests || tests.length == 0) {
+      return ''
+    }
     let result = `\n\n*${type} tests: *\n`
-    tests.forEach((test, index) => {
-      result += `${index+1}. ${test}   ${symbol}\n`
+    result += "```\n"
+    tests.forEach((test, i) => {
+      let index = i < 9 ? `0${i + 1}` : `${i + 1}`
+      result += `${index} ${symbol} ${test}\n`
     });
+    result += "```\n"
     return result
   }
 
@@ -493,7 +499,7 @@ class SlackReporter extends WDIOReporter {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `${this._symbols.start} Starting tests ${specName}`
+            text: `${this._symbols.start} Starting tests ${specName.replace('.feature', '')}`
           },
         },
       ],
@@ -575,17 +581,25 @@ class SlackReporter extends WDIOReporter {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `${this._symbols.finished} End of test - ${
-              this._symbols.watch
-            } ${runnerStats.duration / 1000}s`,
+            text: `${this._symbols.finished} End of test`,
+          },
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `${passedTests}${failedTests}`
           },
         },
       ],
       attachments: [
         {
+          title: 'Results',
+          title_link: resltsUrl,
           color: FINISHED_COLOR,
-          text: `${resltsUrl ? `*Results*: <${resltsUrl}>\n` : ''}${counts}${passedTests}${failedTests}`,
+          text: `${counts}`,
           ts: Date.now().toString(),
+          footer: `Duration: ${runnerStats.duration / 1000}s`
         },
       ],
     };

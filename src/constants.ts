@@ -6,10 +6,10 @@ export const DEFAULT_COLOR = '#D3D3D3';
 export const FINISHED_COLOR = '#4366c7';
 export const DEFAULT_INDENT = '\t';
 export const EMOJI_SYMBOLS = {
-  PASSED: ':white_check_mark:',
-  SKIPPED: ':double_vertical_bar:',
+  PASSED: '✅',
+  SKIPPED: '⏸',
   PENDING: ':grey_question:',
-  FAILED: ':x:',
+  FAILED: '❌',
   ROKET: ':rocket:',
   CHECKERED_FLAG: ':checkered_flag:',
   STOPWATCH: ':stopwatch:',
