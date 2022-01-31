@@ -77,3 +77,20 @@ interface Upload {
   type: typeof SLACK_REQUEST_TYPE.WEB_API_UPLOAD;
   payload: FilesUploadArguments;
 }
+
+export interface StepOutput {
+  title: string;
+  passed: boolean;
+}
+
+export interface ScenarioOutput {
+  title: string;
+  id: string;
+  steps?: Array<StepOutput>;
+}
+
+export interface FeatureOutput {
+  title: string;
+  description: string;
+  scenarios?: Array<ScenarioOutput>;
+}

@@ -42,3 +42,8 @@ export const TEST_RESULT = {
   PASSED_TESTS: 'Passed',
   FAILED_TESTS: 'Failed',
 } as const;
+
+export const TEST_TYPES = {
+  FEATURE: 'feature',
+  SCENARIO: 'scenario',
+} as const;

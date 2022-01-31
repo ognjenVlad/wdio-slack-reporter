@@ -20,19 +20,21 @@ import {
   DEFAULT_INDENT,
   EMOJI_SYMBOLS,
   FAILED_COLOR,
-  SLACK_ICON_URL,
-  SLACK_NAME,
   ERROR_MESSAGES,
   EVENTS,
   SLACK_REQUEST_TYPE,
   FINISHED_COLOR,
-  TEST_RESULT
+  TEST_RESULT,
+  TEST_TYPES
 } from './constants';
 import {
   SlackRequestType,
   SlackReporterOptions,
   EmojiSymbols,
   StateCount,
+  FeatureOutput,
+  StepOutput,
+  ScenarioOutput
 } from './types';
 
 const log = getLogger('@moroo/wdio-slack-reporter');
@@ -55,18 +57,20 @@ class SlackReporter extends WDIOReporter {
   private _title?: string;
   private _notifyTestStartMessage: boolean = true;
   private _notifyFailedCase: boolean = true;
-  private _uploadScreenshotOfFailedCase: boolean = true;
   private _notifyTestFinishMessage: boolean = true;
   private _notifyDetailResultThread: boolean = true;
   private _isSynchronizing: boolean = false;
   private _interval: NodeJS.Timeout;
   private _hasRunnerEnd = false;
-  private _lastScreenshotBuffer?: Buffer = undefined;
   private _suiteUids = new Set<string>();
   private _orderedSuites: SuiteStats[] = [];
   private _indents: number = 0;
   private _suiteIndents: Record<string, number> = {};
   private _currentSuite?: SuiteStats;
+  private _currentScenario: SuiteStats;
+  private _scenarios = {}
+  private _scenarioStatus: string = 'passed'
+  payload: FeatureOutput;
 
   constructor(options: SlackReporterOptions) {
     super(Object.assign({ stdout: true }, options));
@@ -92,16 +96,6 @@ class SlackReporter extends WDIOReporter {
         }
         this._notifyDetailResultThread =
           options.slackOptions.notifyDetailResultThread;
-      }
-      if (options.slackOptions.uploadScreenshotOfFailedCase !== undefined) {
-        this._uploadScreenshotOfFailedCase =
-          options.slackOptions.uploadScreenshotOfFailedCase;
-      }
-      if (options.slackOptions.createScreenshotPayload) {
-        this.createScreenshotPayload =
-          options.slackOptions.createScreenshotPayload.bind(this);
-        log.info('The [createScreenshotPayload] function has been overridden.');
-        log.debug('RESULT', this.createScreenshotPayload.toString());
       }
       if (options.slackOptions.createResultDetailPayload) {
         this.createResultDetailPayload =
@@ -142,8 +136,6 @@ class SlackReporter extends WDIOReporter {
     this._interval = global.setInterval(this.sync.bind(this), 100);
 
     process.on(EVENTS.POST_MESSAGE, this.postMessage.bind(this));
-    process.on(EVENTS.UPLOAD, this.upload.bind(this));
-    process.on(EVENTS.SCREENSHOT, this.uploadFailedTestScreenshot.bind(this));
   }
 
   static getResultsUrl(): string | undefined {
@@ -151,22 +143,6 @@ class SlackReporter extends WDIOReporter {
   }
   static setResultsUrl(url: string | undefined): void {
     SlackReporter.resultsUrl = url;
-  }
-  /**
-   * Upload failed test scrteenshot
-   * @param  {WebdriverIO.Browser} browser Parameters used by WebdriverIO.Browser
-   * @param  {{page: Page, options: ScreenshotOptions}} puppeteer Parameters used by Puppeteer
-   * @return {Promise<Buffer>}
-   */
-  static uploadFailedTestScreenshot(data: string | Buffer): void {
-    let buffer: Buffer;
-
-    if (typeof data === 'string') {
-      buffer = Buffer.from(data, 'base64');
-    } else {
-      buffer = data;
-    }
-    process.emit(EVENTS.SCREENSHOT, buffer);
   }
   /**
    * Post message from Slack web-api
@@ -186,53 +162,6 @@ class SlackReporter extends WDIOReporter {
       });
     });
   }
-  /**
-   * Upload from Slack web-api
-   * @param  {FilesUploadArguments} payload Parameters used by Slack web-api
-   * @return {WebAPICallResult}
-   */
-  static async upload(
-    payload: FilesUploadArguments
-  ): Promise<WebAPICallResult> {
-    return new Promise((resolve, reject) => {
-      process.emit(EVENTS.UPLOAD, payload);
-      process.once(EVENTS.RESULT, ({ result, error }) => {
-        if (result) {
-          resolve(result as WebAPICallResult);
-        }
-        reject(error);
-      });
-    });
-  }
-
-  private uploadFailedTestScreenshot(buffer: Buffer): void {
-    if (this._client) {
-      if (this._notifyFailedCase && this._uploadScreenshotOfFailedCase) {
-        this._lastScreenshotBuffer = buffer;
-        return;
-      } else {
-        log.warn(ERROR_MESSAGES.DISABLED_OPTIONS);
-      }
-    } else {
-      log.warn(ERROR_MESSAGES.NOT_USING_WEB_API);
-    }
-
-    // return new Promise((resolve, reject) => {
-    // 	const interval = setInterval(() => {
-    // 		if (this._lastScreenshotBuffer === undefined) {
-    // 			clearInterval(interval);
-    // 			if (this._client && this._notifyFailedCase) {
-    // 				this._lastScreenshotBuffer = buffer;
-    // 			} else {
-    // 				log.warn(
-    // 					ERROR_MESSAGES.NOT_USING_WEB_API_OR_DISABLED_NOTIFY_FAILED_CASE
-    // 				);
-    // 			}
-    // 			resolve();
-    // 		}
-    // 	}, 100);
-    // });
-  }
   private async postMessage(
     payload: ChatPostMessageArguments
   ): Promise<WebAPICallResult> {
@@ -241,30 +170,6 @@ class SlackReporter extends WDIOReporter {
         log.debug('COMMAND', `postMessage(${payload})`);
         this._pendingSlackRequestCount++;
         const result = await this._client.chat.postMessage(payload);
-        log.debug('RESULT', util.inspect(result));
-        process.emit(EVENTS.RESULT, { result, error: undefined });
-        return result;
-      } catch (error) {
-        log.error(error);
-        process.emit(EVENTS.RESULT, { result: undefined, error });
-        throw error;
-      } finally {
-        this._pendingSlackRequestCount--;
-      }
-    }
-
-    log.error(ERROR_MESSAGES.NOT_USING_WEB_API);
-    throw new Error(ERROR_MESSAGES.NOT_USING_WEB_API);
-  }
-
-  private async upload(
-    payload: FilesUploadArguments
-  ): Promise<WebAPICallResult> {
-    if (this._client) {
-      try {
-        log.debug('COMMAND', `upload(${payload})`);
-        this._pendingSlackRequestCount++;
-        const result = await this._client.files.upload(payload);
         log.debug('RESULT', util.inspect(result));
         process.emit(EVENTS.RESULT, { result, error: undefined });
         return result;
@@ -340,16 +245,6 @@ class SlackReporter extends WDIOReporter {
             }
             break;
           }
-          // case SLACK_REQUEST_TYPE.WEB_API_UPLOAD: {
-          //   if (this._client) {
-          //     result = await this._client.files.upload({
-          //       ...request.payload,
-          //       thread_ts: this._lastSlackWebAPICallResult?.ts as string,
-          //     });
-          //     log.debug('RESULT', util.inspect(result));
-          //   }
-          //   break;
-          // }
         }
       } catch (error) {
         log.error(error);
@@ -463,32 +358,35 @@ class SlackReporter extends WDIOReporter {
    * @param  {string[]} tests Test titles to display
    * @return {String}     String to the test titles to be displayed in Slack
    */
-   private getTests(tests: string[], type: string, symbol: string): string {
-    if (!tests || tests.length == 0) {
-      return '\n'
-    }
-    let result = `\n\n*${type} tests: *\n`
-    result += "```\n"
-    tests.forEach((test, i) => {
-      let index = i < 9 ? `0${i + 1}` : `${i + 1}`
-      result += `${index} ${symbol} ${test}\n`
+   private getTestOutput(): Array<any> {
+    let result = []
+    Object.keys(this._scenarios).forEach(scenario => {
+      const text = this.getScenarioOutput(this._scenarios[scenario])
+      let item = {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `${text}`
+        },
+      }
+      result.push(item)
     });
-  
-    if (result.length > 3001) {
-      const checkResults = "\nFor full report check results```\n"
-      let truncatedResults = result.substring(0,3001 - (checkResults.length + 10))
-      truncatedResults += checkResults
-      return truncatedResults
-    }
-    result += "```\n"
+   
     return result
+  }
+
+  private getScenarioOutput(scenario: ScenarioOutput): string {
+    let text = '```' + scenario.title + '\n'
+    scenario.steps.forEach((step) => {
+      const symbol = step.passed ? this._symbols.passed : this._symbols.failed
+      text += `  ${symbol} ${step.title}\n`
+    })
+    return text + '```\n'
   }
 
   private createStartPayload(
     runnerStats: RunnerStats
   ): ChatPostMessageArguments {
-    const testName= runnerStats.specs[0];
-    const specName = testName.substring(testName.lastIndexOf('/') + 1);
     const text = `${
       this._title ? '*Title*: `' + this._title + '`\n' : ''
     }${this.getEnviromentCombo(
@@ -506,7 +404,7 @@ class SlackReporter extends WDIOReporter {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `${this._symbols.start} Starting tests ${specName.replace('.feature', '')}`
+            text: `${this._symbols.start} Starting tests`
           },
         },
       ],
@@ -525,6 +423,8 @@ class SlackReporter extends WDIOReporter {
   private createFailedTestPayload(
     hookAndTest: HookStats | TestStats
   ): ChatPostMessageArguments {
+    console.log(hookAndTest)
+    log.info(hookAndTest);
     const stack = hookAndTest.error?.stack
       ? '```' + this.convertErrorStack(hookAndTest.error.stack) + '```'
       : '';
@@ -554,57 +454,30 @@ class SlackReporter extends WDIOReporter {
     return payload;
   }
 
-  private createScreenshotPayload(
-    testStats: TestStats,
-    screenshotBuffer: Buffer
-  ): FilesUploadArguments {
-    const payload: FilesUploadArguments = {
-      channels: this._channel,
-      initial_comment: `Screenshot for Fail to ${testStats.title}`,
-      filename: `${testStats.uid}.png`,
-      filetype: 'png',
-      file: screenshotBuffer,
-    };
-    return payload;
-  }
-
   private createResultPayload(
     runnerStats: RunnerStats,
     stateCounts: StateCount
   ): ChatPostMessageArguments {
     const resltsUrl = SlackReporter.getResultsUrl();
     const counts = this.getCounts(stateCounts);
-    const passedTests = this.getTests(this._passedTests, TEST_RESULT.PASSED_TESTS, this._symbols.passed)
-    const failedTests = this.getTests(this._failedTests, TEST_RESULT.FAILED_TESTS, this._symbols.failed)
-    const testName= runnerStats.specs[0];
-    const specName = testName.substring(testName.lastIndexOf('/') + 1);
+    const output = this.getTestOutput()
     const payload: ChatPostMessageArguments = {
       channel: this._channel,
       text: `${this._symbols.finished} End of test${
-        ' - ' + specName
+        ' - ' + this._currentSuite.title
       }\n${counts}`,
       blocks: [
         {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `${this._symbols.finished} End of test`,
+            text: `${this._symbols.finished} End of test: *${this._currentSuite.title}*\n\n${this._currentSuite.description}\n`,
           },
         },
         {
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `${passedTests}`
-          },
+          type: 'divider'
         },
-        {
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `${failedTests}`
-          },
-        },
+        ...output
       ],
       attachments: [
         {
@@ -775,12 +648,30 @@ class SlackReporter extends WDIOReporter {
   // onBeforeCommand(commandArgs: BeforeCommandArgs): void {}
   // onAfterCommand(commandArgs: AfterCommandArgs): void {}
 
-  onSuiteStart(suiteStats: SuiteStats): void {}
+  onSuiteStart(suiteStats: SuiteStats): void {
+    log.info(suiteStats)
+    console.log(suiteStats)
+    switch (suiteStats.type) {
+      case TEST_TYPES.FEATURE: {
+        this._currentSuite = suiteStats
+        break
+      }
+      case TEST_TYPES.SCENARIO: {
+        this._currentScenario = suiteStats
+        this._scenarios[suiteStats.uid] = {
+          title: suiteStats.title,
+          steps: [],
+          id: suiteStats.uid
+        }
+        break
+      }
+    }
+}
 
   // onHookStart(hookStat: HookStats): void {}
   onHookEnd(hookStats: HookStats): void {
     if (hookStats.error) {
-      this._stateCounts.failed++;
+      this._scenarioStatus = 'failed'
 
       if (this._notifyFailedCase) {
         if (this._client) {
@@ -795,47 +686,50 @@ class SlackReporter extends WDIOReporter {
     }
   }
 
-  // onTestStart(testStats: TestStats): void {}
-  onTestPass(testStats: TestStats): void {
-    this._stateCounts.passed++;
-    this._passedTests.push(testStats.title)
-  }
-  onTestFail(testStats: TestStats): void {
-    this._stateCounts.failed++;
-    this._failedTests.push(testStats.title)
+  // Run for every scenario step
+  onTestPass(stepStats: TestStats): void {
+    console.log(stepStats)
+    log.info(stepStats)
 
+    let step: StepOutput = {
+      title: stepStats.title,
+      passed: true
+    }
+    this._scenarios[this._currentScenario.uid].steps.push(step)
+  }
+  onTestFail(stepStats: TestStats): void {
+    let step: StepOutput = {
+      title: stepStats.title,
+      passed: false
+    }
+    this._scenarios[this._currentScenario.uid].steps.push(step)
+    this._scenarioStatus = 'failed'
     if (this._notifyFailedCase) {
       if (this._client) {
         this._slackRequestQueue.push({
           type: SLACK_REQUEST_TYPE.WEB_API_POST_MESSAGE,
           payload: this.createFailedTestPayload(
-            testStats
+            stepStats
           ) as ChatPostMessageArguments,
         });
-
-        if (this._uploadScreenshotOfFailedCase && this._lastScreenshotBuffer) {
-          log.error('UID', testStats.uid);
-          this._slackRequestQueue.push({
-            type: SLACK_REQUEST_TYPE.WEB_API_UPLOAD,
-            payload: this.createScreenshotPayload(
-              testStats,
-              this._lastScreenshotBuffer
-            ) as FilesUploadArguments,
-          });
-          this._lastScreenshotBuffer = undefined;
-        }
       }
     }
   }
   // onTestRetry(testStats: TestStats): void {}
   onTestSkip(testStats: TestStats): void {
-    this._stateCounts.skipped++;
+    this._scenarioStatus = 'skipped'
   }
 
   // onTestEnd(testStats: TestStats): void {}
 
   onSuiteEnd(suiteStats: SuiteStats): void {
     this._indents--;
+    switch (suiteStats.type) {
+      case TEST_TYPES.SCENARIO: {
+        this._stateCounts[this._scenarioStatus]++
+        break
+      }
+    }
   }
 
   onRunnerEnd(runnerStats: RunnerStats): void {
@@ -849,17 +743,6 @@ class SlackReporter extends WDIOReporter {
               this._stateCounts
             ) as ChatPostMessageArguments,
           });
-
-          if (this._notifyDetailResultThread) {
-            this._slackRequestQueue.push({
-              type: SLACK_REQUEST_TYPE.WEB_API_POST_MESSAGE,
-              payload: this.createResultDetailPayload(
-                runnerStats,
-                this._stateCounts
-              ) as ChatPostMessageArguments,
-              isDetailResult: true,
-            });
-          }
         }
       } catch (error) {
         log.error(error);
@@ -890,7 +773,6 @@ declare global {
         event: typeof EVENTS.UPLOAD,
         payload: FilesUploadArguments
       ): Promise<WebAPICallResult>;
-      emit(event: typeof EVENTS.SCREENSHOT, buffer: Buffer): boolean;
       emit(
         event: typeof EVENTS.RESULT,
         args: {
@@ -908,10 +790,6 @@ declare global {
       on(
         event: typeof EVENTS.UPLOAD,
         listener: (payload: FilesUploadArguments) => Promise<WebAPICallResult>
-      ): this;
-      on(
-        event: typeof EVENTS.SCREENSHOT,
-        listener: (buffer: Buffer) => void
       ): this;
       once(
         event: typeof EVENTS.RESULT,
