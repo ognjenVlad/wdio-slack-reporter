@@ -24,8 +24,9 @@ import {
   EVENTS,
   SLACK_REQUEST_TYPE,
   FINISHED_COLOR,
-  TEST_RESULT,
-  TEST_TYPES
+  TEST_TYPES,
+  FEATURE_FAILED,
+  FEATURE_PASSED
 } from './constants';
 import {
   SlackRequestType,
@@ -49,8 +50,6 @@ class SlackReporter extends WDIOReporter {
     failed: 0,
     skipped: 0,
   };
-  private _passedTests: string[] = []
-  private _failedTests: string[] = []
   private _client?: WebClient;
   private _channel?: string;
   private _symbols: EmojiSymbols;
@@ -58,7 +57,6 @@ class SlackReporter extends WDIOReporter {
   private _notifyTestStartMessage: boolean = true;
   private _notifyFailedCase: boolean = true;
   private _notifyTestFinishMessage: boolean = true;
-  private _notifyDetailResultThread: boolean = true;
   private _isSynchronizing: boolean = false;
   private _interval: NodeJS.Timeout;
   private _hasRunnerEnd = false;
@@ -66,10 +64,10 @@ class SlackReporter extends WDIOReporter {
   private _orderedSuites: SuiteStats[] = [];
   private _indents: number = 0;
   private _suiteIndents: Record<string, number> = {};
-  private _currentSuite?: SuiteStats;
+  private _currentFeature?: SuiteStats;
   private _currentScenario: SuiteStats;
   private _scenarios = {}
-  private _scenarioStatus: string = 'passed'
+  private _featureStatus: string
   payload: FeatureOutput;
 
   constructor(options: SlackReporterOptions) {
@@ -88,15 +86,6 @@ class SlackReporter extends WDIOReporter {
         channel: options.slackOptions.channel,
       });
       this._channel = options.slackOptions.channel;
-      if (options.slackOptions.notifyDetailResultThread !== undefined) {
-        if (options.notifyTestFinishMessage === false) {
-          log.warn(
-            'Notify is not possible because the notifyResultMessage option is off.'
-          );
-        }
-        this._notifyDetailResultThread =
-          options.slackOptions.notifyDetailResultThread;
-      }
       if (options.slackOptions.createResultDetailPayload) {
         this.createResultDetailPayload =
           options.slackOptions.createResultDetailPayload.bind(this);
@@ -350,7 +339,7 @@ class SlackReporter extends WDIOReporter {
    * @return {String}     String to the stat count to be displayed in Slack
    */
   private getCounts(stateCounts: StateCount): string {
-    return `${this._symbols.passed} Passed: ${stateCounts.passed} | ${this._symbols.failed} Failed: ${stateCounts.failed} | ${this._symbols.skipped} Skipped: ${stateCounts.skipped}`;
+    return `Steps: \n${this._symbols.passed} Passed: ${stateCounts.passed} | ${this._symbols.failed} Failed: ${stateCounts.failed} | ${this._symbols.skipped} Skipped: ${stateCounts.skipped}`;
   }
 
   /**
@@ -378,7 +367,7 @@ class SlackReporter extends WDIOReporter {
   private getScenarioOutput(scenario: ScenarioOutput): string {
     let text = '```' + scenario.title + '\n'
     scenario.steps.forEach((step) => {
-      const symbol = step.passed ? this._symbols.passed : this._symbols.failed
+      const symbol = this._symbols[step.status]
       text += `  ${symbol} ${step.title}\n`
     })
     return text + '```\n'
@@ -423,20 +412,19 @@ class SlackReporter extends WDIOReporter {
   private createFailedTestPayload(
     hookAndTest: HookStats | TestStats
   ): ChatPostMessageArguments {
-    console.log(hookAndTest)
-    log.info(hookAndTest);
+    console.log("HHOKS", hookAndTest)
     const stack = hookAndTest.error?.stack
       ? '```' + this.convertErrorStack(hookAndTest.error.stack) + '```'
       : '';
     const payload: ChatPostMessageArguments = {
       channel: this._channel,
-      text: `${this._symbols.failed} Test failure`,
+      text: `${this._symbols.failed} Error`,
       blocks: [
         {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `${this._symbols.failed} Test failure`
+            text: `${this._symbols.failed} Error`
           },
         },
       ],
@@ -444,7 +432,7 @@ class SlackReporter extends WDIOReporter {
         {
           color: FAILED_COLOR,
           title: `${
-            this._currentSuite ? this._currentSuite.title : hookAndTest.parent
+            this._currentScenario ? this._currentScenario.title : hookAndTest.parent
           }`,
           text: `* » ${hookAndTest.title}*\n${stack}`,
         },
@@ -461,17 +449,19 @@ class SlackReporter extends WDIOReporter {
     const resltsUrl = SlackReporter.getResultsUrl();
     const counts = this.getCounts(stateCounts);
     const output = this.getTestOutput()
+    // const result = this._featureStatus === FEATURE_FAILED ? `${this._symbols.failed} ${FEATURE_FAILED}` : `${this._symbols.passed} ${FEATURE_PASSED}`
+    const title = `${this._symbols.finished} End of test: *${this._currentFeature.title}*\n\n${this._currentFeature.description}\n`
     const payload: ChatPostMessageArguments = {
       channel: this._channel,
       text: `${this._symbols.finished} End of test${
-        ' - ' + this._currentSuite.title
+        ' - ' + this._currentFeature.title
       }\n${counts}`,
       blocks: [
         {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `${this._symbols.finished} End of test: *${this._currentSuite.title}*\n\n${this._currentSuite.description}\n`,
+            text: title,
           },
         },
         {
@@ -649,11 +639,9 @@ class SlackReporter extends WDIOReporter {
   // onAfterCommand(commandArgs: AfterCommandArgs): void {}
 
   onSuiteStart(suiteStats: SuiteStats): void {
-    log.info(suiteStats)
-    console.log(suiteStats)
     switch (suiteStats.type) {
       case TEST_TYPES.FEATURE: {
-        this._currentSuite = suiteStats
+        this._currentFeature = suiteStats
         break
       }
       case TEST_TYPES.SCENARIO: {
@@ -671,39 +659,26 @@ class SlackReporter extends WDIOReporter {
   // onHookStart(hookStat: HookStats): void {}
   onHookEnd(hookStats: HookStats): void {
     if (hookStats.error) {
-      this._scenarioStatus = 'failed'
-
-      if (this._notifyFailedCase) {
-        if (this._client) {
-          this._slackRequestQueue.push({
-            type: SLACK_REQUEST_TYPE.WEB_API_POST_MESSAGE,
-            payload: this.createFailedTestPayload(
-              hookStats
-            ) as ChatPostMessageArguments,
-          });
-        }
-      }
+      this._featureStatus = 'FAILED'
     }
   }
 
   // Run for every scenario step
   onTestPass(stepStats: TestStats): void {
-    console.log(stepStats)
-    log.info(stepStats)
-
     let step: StepOutput = {
       title: stepStats.title,
-      passed: true
+      status: 'passed'
     }
+    this._stateCounts.passed++;
     this._scenarios[this._currentScenario.uid].steps.push(step)
   }
   onTestFail(stepStats: TestStats): void {
     let step: StepOutput = {
       title: stepStats.title,
-      passed: false
+      status: 'failed'
     }
+    this._stateCounts.failed++;
     this._scenarios[this._currentScenario.uid].steps.push(step)
-    this._scenarioStatus = 'failed'
     if (this._notifyFailedCase) {
       if (this._client) {
         this._slackRequestQueue.push({
@@ -716,20 +691,19 @@ class SlackReporter extends WDIOReporter {
     }
   }
   // onTestRetry(testStats: TestStats): void {}
-  onTestSkip(testStats: TestStats): void {
-    this._scenarioStatus = 'skipped'
+  onTestSkip(stepStats: TestStats): void {
+    let step: StepOutput = {
+      title: stepStats.title,
+      status: 'skipped'
+    }
+    this._stateCounts.skipped++;
+    this._scenarios[this._currentScenario.uid].steps.push(step)
   }
 
   // onTestEnd(testStats: TestStats): void {}
 
   onSuiteEnd(suiteStats: SuiteStats): void {
     this._indents--;
-    switch (suiteStats.type) {
-      case TEST_TYPES.SCENARIO: {
-        this._stateCounts[this._scenarioStatus]++
-        break
-      }
-    }
   }
 
   onRunnerEnd(runnerStats: RunnerStats): void {

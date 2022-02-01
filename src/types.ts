@@ -80,7 +80,7 @@ interface Upload {
 
 export interface StepOutput {
   title: string;
-  passed: boolean;
+  status: string;
 }
 
 export interface ScenarioOutput {

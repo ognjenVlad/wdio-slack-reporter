@@ -47,3 +47,6 @@ export const TEST_TYPES = {
   FEATURE: 'feature',
   SCENARIO: 'scenario',
 } as const;
+
+export const FEATURE_FAILED = 'FAILED'
+export const FEATURE_PASSED = 'PASSED'
