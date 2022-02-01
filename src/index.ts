@@ -60,14 +60,11 @@ class SlackReporter extends WDIOReporter {
   private _isSynchronizing: boolean = false;
   private _interval: NodeJS.Timeout;
   private _hasRunnerEnd = false;
-  private _suiteUids = new Set<string>();
-  private _orderedSuites: SuiteStats[] = [];
+  private _suites = Array<SuiteStats>();
   private _indents: number = 0;
   private _suiteIndents: Record<string, number> = {};
   private _currentFeature?: SuiteStats;
   private _currentScenario: SuiteStats;
-  private _scenarios = {}
-  private _featureStatus: string
   payload: FeatureOutput;
 
   constructor(options: SlackReporterOptions) {
@@ -86,14 +83,6 @@ class SlackReporter extends WDIOReporter {
         channel: options.slackOptions.channel,
       });
       this._channel = options.slackOptions.channel;
-      if (options.slackOptions.createResultDetailPayload) {
-        this.createResultDetailPayload =
-          options.slackOptions.createResultDetailPayload.bind(this);
-        log.info(
-          'The [createResultDetailPayload] function has been overridden.'
-        );
-        log.debug('RESULT', this.createResultDetailPayload.toString());
-      }
     }
     this._symbols = {
       passed: options.emojiSymbols?.passed || EMOJI_SYMBOLS.PASSED,
@@ -332,47 +321,7 @@ class SlackReporter extends WDIOReporter {
     const indents = this._suiteIndents[uid];
     return indents === 0 ? '' : Array(indents).join(DEFAULT_INDENT);
   }
-
-  /**
-   * Indent a suite based on where how it's nested
-   * @param  {StateCount} stateCounts Stat count
-   * @return {String}     String to the stat count to be displayed in Slack
-   */
-  private getCounts(stateCounts: StateCount): string {
-    return `Steps: \n${this._symbols.passed} Passed: ${stateCounts.passed} | ${this._symbols.failed} Failed: ${stateCounts.failed} | ${this._symbols.skipped} Skipped: ${stateCounts.skipped}`;
-  }
-
-  /**
-   * Indent a suite based on where how it's nested
-   * @param  {string[]} tests Test titles to display
-   * @return {String}     String to the test titles to be displayed in Slack
-   */
-   private getTestOutput(): Array<any> {
-    let result = []
-    Object.keys(this._scenarios).forEach(scenario => {
-      const text = this.getScenarioOutput(this._scenarios[scenario])
-      let item = {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `${text}`
-        },
-      }
-      result.push(item)
-    });
-   
-    return result
-  }
-
-  private getScenarioOutput(scenario: ScenarioOutput): string {
-    let text = '```' + scenario.title + '\n'
-    scenario.steps.forEach((step) => {
-      const symbol = this._symbols[step.status]
-      text += `  ${symbol} ${step.title}\n`
-    })
-    return text + '```\n'
-  }
-
+  
   private createStartPayload(
     runnerStats: RunnerStats
   ): ChatPostMessageArguments {
@@ -405,17 +354,90 @@ class SlackReporter extends WDIOReporter {
         },
       ],
     };
-
+    
     return payload;
+  }
+      
+  /**
+ * Indent a suite based on where how it's nested
+ * @param  {StateCount} stateCounts Stat count
+ * @return {String}     String to the stat count to be displayed in Slack
+ */
+  private getCounts(stateCounts: StateCount): string {
+    return `\n${this._symbols.passed} Passed: ${stateCounts.passed} | ${this._symbols.failed} Failed: ${stateCounts.failed} | ${this._symbols.skipped} Skipped: ${stateCounts.skipped}`;
+  }
+  
+  /**
+   * Indent a suite based on where how it's nested
+   * @param  {string[]} tests Test titles to display
+   * @return {String}     String to the test titles to be displayed in Slack
+   */
+  private getTestOutput(suites): Array<any> {
+    let result = []
+    Object.values(suites).forEach(suite => {
+      const text = this.getScenarioOutput(suite)
+      let item = {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `${text}`
+        },
+      }
+      result.push(item)
+    });
+    
+    return result
+  }
+  
+  private getFeatureResult(suites): any {
+    let result = Object.values(suites).find(suite => {
+      const tests = this.getEventsToReport(suite)
+      if (tests.find((item) => item.state === 'failed')) {
+        return true
+      }
+    })
+    return result
+  }
+    
+  private getScenarioOutput(suite): string {
+    let tests = this.getEventsToReport(suite)
+    let text = '```' + suite.title + '\n'
+    tests.forEach((step) => {
+      const symbol = this._symbols[step.state]
+      text += `  ${symbol} ${step.title}\n`
+    })
+    return text + '```\n'
+  }
+
+  private getEventsToReport(suite) : Array<HookStats | TestStats>{
+    return [
+        /**
+         * report all tests and only hooks that failed
+         */
+        ...suite.hooksAndTests
+            .filter((item) => {
+            return item.type === 'test' || Boolean(item.error);
+        })
+    ];
+  }
+    
+  private getOrderedSuites() : any {
+    let orderedSuites = {}
+    for (let suite of this._suites) {
+        for (const [suiteUid, s] of Object.entries(this.suites)) {
+            if (suite.uid !== suiteUid) {
+                continue;
+            }
+            orderedSuites[suite.uid] = suite
+        }
+    }
+    return orderedSuites
   }
 
   private createFailedTestPayload(
     hookAndTest: HookStats | TestStats
   ): ChatPostMessageArguments {
-    console.log("HHOKS", hookAndTest)
-    const stack = hookAndTest.error?.stack
-      ? '```' + this.convertErrorStack(hookAndTest.error.stack) + '```'
-      : '';
+    const stack = hookAndTest.error?.stack ? '```' + this.convertErrorStack(hookAndTest.error.stack) + '```' : '';
     const payload: ChatPostMessageArguments = {
       channel: this._channel,
       text: `${this._symbols.failed} Error`,
@@ -438,18 +460,21 @@ class SlackReporter extends WDIOReporter {
         },
       ],
     };
-
     return payload;
   }
+
 
   private createResultPayload(
     runnerStats: RunnerStats,
     stateCounts: StateCount
   ): ChatPostMessageArguments {
+    // this.getFailureDisplay()
     const resltsUrl = SlackReporter.getResultsUrl();
     const counts = this.getCounts(stateCounts);
-    const output = this.getTestOutput()
-    // const result = this._featureStatus === FEATURE_FAILED ? `${this._symbols.failed} ${FEATURE_FAILED}` : `${this._symbols.passed} ${FEATURE_PASSED}`
+    const suites = this.getOrderedSuites();
+    const output = this.getTestOutput(suites)
+    const failedTest = this.getFeatureResult(suites)
+    const result = failedTest ? `${this._symbols.failed} ${FEATURE_FAILED}` : `${this._symbols.passed} ${FEATURE_PASSED}`
     const title = `${this._symbols.finished} End of test: *${this._currentFeature.title}*\n\n${this._currentFeature.description}\n`
     const payload: ChatPostMessageArguments = {
       channel: this._channel,
@@ -471,10 +496,10 @@ class SlackReporter extends WDIOReporter {
       ],
       attachments: [
         {
-          title: 'Results',
+          title: 'Results\n',
           title_link: resltsUrl,
           color: FINISHED_COLOR,
-          text: `${counts}`,
+          text: `${counts}\n\n${result}\n`,
           ts: Date.now().toString(),
           footer: `Duration: ${runnerStats.duration / 1000}s`
         },
@@ -482,138 +507,6 @@ class SlackReporter extends WDIOReporter {
     };
 
     return payload;
-  }
-
-  private createResultDetailPayload(
-    runnerStats: RunnerStats,
-    stateCounts: StateCount
-  ): ChatPostMessageArguments {
-    const counts = this.getCounts(stateCounts);
-    const payload: ChatPostMessageArguments = {
-      channel: this._channel,
-      text: `${this._title ? this._title + '\n' : ''}${counts}`,
-      blocks: [
-        {
-          type: 'header',
-          text: {
-            type: 'plain_text',
-            text: this._title || '',
-            emoji: true,
-          },
-        },
-        ...this.getResultDetailPayloads(),
-        {
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `${counts}\n${this._symbols.watch} ${
-              runnerStats.duration / 1000
-            }s`,
-          },
-        },
-      ],
-    };
-
-    return payload;
-  }
-
-  private getResultDetailPayloads(): (Block | KnownBlock)[] {
-    const output: string[] = [];
-    const suites = this.getOrderedSuites();
-
-    const blocks: (Block | KnownBlock)[] = [];
-
-    for (const suite of suites) {
-      // Don't do anything if a suite has no tests or sub suites
-      if (
-        suite.tests.length === 0 &&
-        suite.suites.length === 0 &&
-        suite.hooks.length === 0
-      ) {
-        continue;
-      }
-
-      // Get the indent/starting point for this suite
-      const suiteIndent = this.indent(suite.uid);
-
-      // Display the title of the suite
-      if (suite.type) {
-        output.push(`*${suiteIndent}${suite.title}*`);
-      }
-
-      // display suite description (Cucumber only)
-      if (suite.description) {
-        output.push(
-          ...suite.description
-            .trim()
-            .split('\n')
-            .map((l) => `${suiteIndent}${l.trim()}`)
-        );
-      }
-
-      const eventsToReport = this.getEventsToReport(suite);
-      for (const test of eventsToReport) {
-        const testTitle = test.title;
-        const testState = test.state;
-        const testIndent = `${DEFAULT_INDENT}${suiteIndent}`;
-
-        // Output for a single test
-        output.push(
-          `*${testIndent}${
-            testState ? `${this._symbols[testState]} ` : ''
-          }${testTitle}*`
-        );
-      }
-
-      // Put a line break after each suite (only if tests exist in that suite)
-      if (eventsToReport.length) {
-        const block: Block | KnownBlock = {
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: output.join('\n'),
-          },
-        };
-        output.length = 0;
-        blocks.push(block);
-      }
-    }
-    return blocks;
-  }
-
-  private getOrderedSuites() {
-    if (this._orderedSuites.length) {
-      return this._orderedSuites;
-    }
-
-    this._orderedSuites = [];
-    for (const uid of this._suiteUids) {
-      for (const [suiteUid, suite] of Object.entries(this.suites)) {
-        if (suiteUid !== uid) {
-          continue;
-        }
-
-        this._orderedSuites.push(suite);
-      }
-    }
-
-    return this._orderedSuites;
-  }
-
-  /**
-   * returns everything worth reporting from a suite
-   * @param  {Object}    suite  test suite containing tests and hooks
-   * @return {Object[]}         list of events to report
-   */
-  private getEventsToReport(suite: SuiteStats) {
-    return [
-      /**
-       * report all tests and only hooks that failed
-       */
-      ...suite.hooksAndTests.filter((item) => {
-        return item.type === 'test' || Boolean(item.error);
-      }),
-    ];
   }
 
   onRunnerStart(runnerStats: RunnerStats): void {
@@ -637,48 +530,39 @@ class SlackReporter extends WDIOReporter {
 
   // onBeforeCommand(commandArgs: BeforeCommandArgs): void {}
   // onAfterCommand(commandArgs: AfterCommandArgs): void {}
-
+  /**
+   * This hook is called twice:
+   * 1. create the feature
+   * 2. add the scenario to the feature
+  */
   onSuiteStart(suiteStats: SuiteStats): void {
     switch (suiteStats.type) {
       case TEST_TYPES.FEATURE: {
         this._currentFeature = suiteStats
         break
-      }
-      case TEST_TYPES.SCENARIO: {
+      } case TEST_TYPES.SCENARIO: {
         this._currentScenario = suiteStats
-        this._scenarios[suiteStats.uid] = {
-          title: suiteStats.title,
-          steps: [],
-          id: suiteStats.uid
-        }
+        this._suites.push(suiteStats)
         break
       }
     }
 }
 
   // onHookStart(hookStat: HookStats): void {}
+  /**
+   * This one is for the end of the hook, it directly comes after the onHookStart
+   * A hook is the same  as a 'normal' step, so use the update step
+   */
   onHookEnd(hookStats: HookStats): void {
-    if (hookStats.error) {
-      this._featureStatus = 'FAILED'
-    }
   }
 
-  // Run for every scenario step
+  // Run for every step
   onTestPass(stepStats: TestStats): void {
-    let step: StepOutput = {
-      title: stepStats.title,
-      status: 'passed'
-    }
     this._stateCounts.passed++;
-    this._scenarios[this._currentScenario.uid].steps.push(step)
   }
+  // Run for every step
   onTestFail(stepStats: TestStats): void {
-    let step: StepOutput = {
-      title: stepStats.title,
-      status: 'failed'
-    }
     this._stateCounts.failed++;
-    this._scenarios[this._currentScenario.uid].steps.push(step)
     if (this._notifyFailedCase) {
       if (this._client) {
         this._slackRequestQueue.push({
@@ -692,12 +576,7 @@ class SlackReporter extends WDIOReporter {
   }
   // onTestRetry(testStats: TestStats): void {}
   onTestSkip(stepStats: TestStats): void {
-    let step: StepOutput = {
-      title: stepStats.title,
-      status: 'skipped'
-    }
     this._stateCounts.skipped++;
-    this._scenarios[this._currentScenario.uid].steps.push(step)
   }
 
   // onTestEnd(testStats: TestStats): void {}
