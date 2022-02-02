@@ -55,7 +55,7 @@ class SlackReporter extends WDIOReporter {
   private _symbols: EmojiSymbols;
   private _title?: string;
   private _notifyTestStartMessage: boolean = true;
-  private _notifyFailedCase: boolean = true;
+  private _username: string;
   private _notifyTestFinishMessage: boolean = true;
   private _isSynchronizing: boolean = false;
   private _interval: NodeJS.Timeout;
@@ -94,17 +94,13 @@ class SlackReporter extends WDIOReporter {
       watch: options.emojiSymbols?.watch || EMOJI_SYMBOLS.STOPWATCH,
     };
     this._title = options.title;
-
+    this._username = options.slackOptions.username;
     if (options.resultsUrl !== undefined) {
       SlackReporter.setResultsUrl(options.resultsUrl);
     }
 
     if (options.notifyTestStartMessage !== undefined) {
       this._notifyTestStartMessage = options.notifyTestStartMessage;
-    }
-
-    if (options.notifyFailedCase !== undefined) {
-      this._notifyFailedCase = options.notifyFailedCase;
     }
 
     if (options.notifyTestFinishMessage !== undefined) {
@@ -218,8 +214,8 @@ class SlackReporter extends WDIOReporter {
                   ? (this._lastSlackWebAPICallResult?.ts as string)
                   : undefined,
               });
-              this._lastSlackWebAPICallResult = result;
-              log.debug('RESULT', util.inspect(result));
+              this._lastSlackWebAPICallResult = request.isDetailResult ? this._lastSlackWebAPICallResult : result
+              log.debug('RESULT', util.inspect(result))
             }
             break;
           }
@@ -342,7 +338,7 @@ class SlackReporter extends WDIOReporter {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `${this._symbols.start} Starting tests`
+            text: `${this._symbols.start} Tests started by: ${this._username}`
           },
         },
       ],
@@ -468,11 +464,9 @@ class SlackReporter extends WDIOReporter {
     runnerStats: RunnerStats,
     stateCounts: StateCount
   ): ChatPostMessageArguments {
-    // this.getFailureDisplay()
     const resltsUrl = SlackReporter.getResultsUrl();
     const counts = this.getCounts(stateCounts);
     const suites = this.getOrderedSuites();
-    const output = this.getTestOutput(suites)
     const failedTest = this.getFeatureResult(suites)
     const result = failedTest ? `${this._symbols.failed} ${FEATURE_FAILED}` : `${this._symbols.passed} ${FEATURE_PASSED}`
     const title = `${this._symbols.finished} End of test: *${this._currentFeature.title}*\n\n${this._currentFeature.description}\n`
@@ -489,20 +483,30 @@ class SlackReporter extends WDIOReporter {
             text: title,
           },
         },
-        {
-          type: 'divider'
-        },
-        ...output
       ],
       attachments: [
         {
-          title: 'Results\n',
+          title: 'Results\n\n',
           title_link: resltsUrl,
           color: FINISHED_COLOR,
           text: `${counts}\n\n${result}\n`,
           ts: Date.now().toString(),
           footer: `Duration: ${runnerStats.duration / 1000}s`
         },
+      ],
+    };
+
+    return payload;
+  }
+
+  private createResultThreadPayload(): ChatPostMessageArguments {
+    const suites = this.getOrderedSuites();
+    const output = this.getTestOutput(suites)
+    const payload: ChatPostMessageArguments = {
+      channel: this._channel,
+      text: `Results`,
+      blocks: [
+        ...output
       ],
     };
 
@@ -563,16 +567,16 @@ class SlackReporter extends WDIOReporter {
   // Run for every step
   onTestFail(stepStats: TestStats): void {
     this._stateCounts.failed++;
-    if (this._notifyFailedCase) {
-      if (this._client) {
-        this._slackRequestQueue.push({
-          type: SLACK_REQUEST_TYPE.WEB_API_POST_MESSAGE,
-          payload: this.createFailedTestPayload(
-            stepStats
-          ) as ChatPostMessageArguments,
-        });
-      }
-    }
+    // if (this._notifyFailedCase) {
+    //   if (this._client) {
+    //     this._slackRequestQueue.push({
+    //       type: SLACK_REQUEST_TYPE.WEB_API_POST_MESSAGE,
+    //       payload: this.createFailedTestPayload(
+    //         stepStats
+    //       ) as ChatPostMessageArguments,
+    //     });
+    //   }
+    // }
   }
   // onTestRetry(testStats: TestStats): void {}
   onTestSkip(stepStats: TestStats): void {
@@ -595,6 +599,12 @@ class SlackReporter extends WDIOReporter {
               runnerStats,
               this._stateCounts
             ) as ChatPostMessageArguments,
+          });
+          // Send results in thread
+          this._slackRequestQueue.push({
+            type: SLACK_REQUEST_TYPE.WEB_API_POST_MESSAGE,
+            payload: this.createResultThreadPayload() as ChatPostMessageArguments,
+            isDetailResult: true,
           });
         }
       } catch (error) {
