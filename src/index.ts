@@ -34,8 +34,6 @@ import {
   EmojiSymbols,
   StateCount,
   FeatureOutput,
-  StepOutput,
-  ScenarioOutput
 } from './types';
 
 const log = getLogger('@moroo/wdio-slack-reporter');
@@ -61,10 +59,10 @@ class SlackReporter extends WDIOReporter {
   private _interval: NodeJS.Timeout;
   private _hasRunnerEnd = false;
   private _suites = Array<SuiteStats>();
-  private _indents: number = 0;
   private _suiteIndents: Record<string, number> = {};
   private _currentFeature?: SuiteStats;
   private _currentScenario: SuiteStats;
+  private _runnerStats: RunnerStats;
   payload: FeatureOutput;
 
   constructor(options: SlackReporterOptions) {
@@ -319,13 +317,13 @@ class SlackReporter extends WDIOReporter {
   }
   
   private createStartPayload(
-    runnerStats: RunnerStats
+    suiteStats: SuiteStats
   ): ChatPostMessageArguments {
     const text = `${
       this._title ? '*Title*: `' + this._title + '`\n' : ''
     }${this.getEnviromentCombo(
-      runnerStats.capabilities,
-      runnerStats.isMultiremote
+      this._runnerStats.capabilities,
+      this._runnerStats.isMultiremote
     )}`;
 
     const payload: ChatPostMessageArguments = {
@@ -338,7 +336,7 @@ class SlackReporter extends WDIOReporter {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `${this._symbols.start} Tests started by: ${this._username}`
+            text: `${this._symbols.start} Starting test: *${suiteStats.title}*\nTests started by: *${this._username}*`
           },
         },
       ],
@@ -514,22 +512,7 @@ class SlackReporter extends WDIOReporter {
   }
 
   onRunnerStart(runnerStats: RunnerStats): void {
-    if (this._notifyTestStartMessage) {
-      try {
-        if (this._client) {
-          log.info('INFO', `ON RUNNER START: POST MESSAGE`);
-          this._slackRequestQueue.push({
-            type: SLACK_REQUEST_TYPE.WEB_API_POST_MESSAGE,
-            payload: this.createStartPayload(
-              runnerStats
-            ) as ChatPostMessageArguments,
-          });
-        }
-      } catch (error) {
-        log.error(error);
-        throw error;
-      }
-    }
+    this._runnerStats = runnerStats
   }
 
   // onBeforeCommand(commandArgs: BeforeCommandArgs): void {}
@@ -543,6 +526,21 @@ class SlackReporter extends WDIOReporter {
     switch (suiteStats.type) {
       case TEST_TYPES.FEATURE: {
         this._currentFeature = suiteStats
+        if (this._notifyTestStartMessage) {
+          try {
+            if (this._client) {
+              this._slackRequestQueue.push({
+                type: SLACK_REQUEST_TYPE.WEB_API_POST_MESSAGE,
+                payload: this.createStartPayload(
+                  suiteStats
+                ) as ChatPostMessageArguments,
+              });
+            }
+          } catch (error) {
+            log.error(error);
+            throw error;
+          }
+        }
         break
       } case TEST_TYPES.SCENARIO: {
         this._currentScenario = suiteStats
@@ -585,9 +583,7 @@ class SlackReporter extends WDIOReporter {
 
   // onTestEnd(testStats: TestStats): void {}
 
-  onSuiteEnd(suiteStats: SuiteStats): void {
-    this._indents--;
-  }
+  // onSuiteEnd(suiteStats: SuiteStats): void {}
 
   onRunnerEnd(runnerStats: RunnerStats): void {
     if (this._notifyTestFinishMessage) {
