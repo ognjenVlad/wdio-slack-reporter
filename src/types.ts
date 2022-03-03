@@ -35,6 +35,7 @@ export interface SlackWebApiOptions {
   uploadScreenshotOfFailedCase?: boolean;
   notifyDetailResultThread?: boolean;
   username?: string
+  env?: string
   createScreenshotPayload?: (
     testStats: TestStats,
     screenshotBuffer: Buffer

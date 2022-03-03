@@ -54,6 +54,7 @@ class SlackReporter extends WDIOReporter {
   private _title?: string;
   private _notifyTestStartMessage: boolean = true;
   private _username: string;
+  private _env: string;
   private _notifyTestFinishMessage: boolean = true;
   private _isSynchronizing: boolean = false;
   private _interval: NodeJS.Timeout;
@@ -93,6 +94,7 @@ class SlackReporter extends WDIOReporter {
     };
     this._title = options.title;
     this._username = options.slackOptions.username;
+    this._env = options.slackOptions.env;
     if (options.resultsUrl !== undefined) {
       SlackReporter.setResultsUrl(options.resultsUrl);
     }
@@ -336,7 +338,7 @@ class SlackReporter extends WDIOReporter {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `${this._symbols.start} Starting test: *${suiteStats.title}*\nTests started by: *${this._username}*`
+            text: `${this._symbols.start} Starting test: *${suiteStats.title}*\nTests started by: *${this._username}*\nEnvironment: *${this._env}*`
           },
         },
       ],
