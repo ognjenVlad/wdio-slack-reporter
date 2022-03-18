@@ -8,7 +8,7 @@ export const DEFAULT_INDENT = '\t';
 export const EMOJI_SYMBOLS = {
   PASSED: '✅',
   SKIPPED: '⏸',
-  PENDING: ':grey_question:',
+  PENDING: '❔',
   FAILED: '❌',
   ROKET: ':rocket:',
   CHECKERED_FLAG: ':checkered_flag:',
