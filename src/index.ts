@@ -24,6 +24,7 @@ import {
   EVENTS,
   SLACK_REQUEST_TYPE,
   FINISHED_COLOR,
+  SUCCESS_COLOR,
   TEST_TYPES,
   FEATURE_FAILED,
   FEATURE_PASSED
@@ -323,30 +324,20 @@ class SlackReporter extends WDIOReporter {
   ): ChatPostMessageArguments {
     const text = `${
       this._title ? '*Title*: `' + this._title + '`\n' : ''
-    }${this.getEnviromentCombo(
+    }`;
+    const driver = `${this.getEnviromentCombo(
       this._runnerStats.capabilities,
       this._runnerStats.isMultiremote
-    )}`;
-
+    )}`
     const payload: ChatPostMessageArguments = {
       channel: this._channel,
-      text: `${this._symbols.start} Start testing${
-        this._title ? 'for ' + this._title : ''
-      }`,
-      blocks: [
-        {
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `${this._symbols.start} Starting test: *${suiteStats.title}*\nTests started by: *${this._username}*\nEnvironment: *${this._env}*`
-          },
-        },
-      ],
+      text: '',
+      blocks: [],
       attachments: [
         {
           color: DEFAULT_COLOR,
-          text,
-          ts: Date.now().toString(),
+          text: `${this._symbols.start} Starting test: *${suiteStats.title}*\nEnvironment: *${this._env}*\n` + text,
+          footer: `Started by: ${this._username} ${driver}`
         },
       ],
     };
@@ -360,7 +351,7 @@ class SlackReporter extends WDIOReporter {
  * @return {String}     String to the stat count to be displayed in Slack
  */
   private getCounts(stateCounts: StateCount): string {
-    return `\n${this._symbols.passed} Passed: ${stateCounts.passed} | ${this._symbols.failed} Failed: ${stateCounts.failed} | ${this._symbols.skipped} Skipped: ${stateCounts.skipped}`;
+    return `[Passed: *${stateCounts.passed}* | Failed: *${stateCounts.failed}* | Skipped: *${stateCounts.skipped}*]`;
   }
   
   /**
@@ -464,34 +455,21 @@ class SlackReporter extends WDIOReporter {
     runnerStats: RunnerStats,
     stateCounts: StateCount
   ): ChatPostMessageArguments {
-    const resltsUrl = SlackReporter.getResultsUrl();
+    const resultsUrl = SlackReporter.getResultsUrl();
     const counts = this.getCounts(stateCounts);
     const suites = this.getOrderedSuites();
     const failedTest = this.getFeatureResult(suites)
-    const result = failedTest ? `${this._symbols.failed} ${FEATURE_FAILED}` : `${this._symbols.passed} ${FEATURE_PASSED}`
-    const title = `${this._symbols.finished} End of test: *${this._currentFeature.title}*\n\n${this._currentFeature.description}\n`
+    const result = failedTest ? FEATURE_FAILED : FEATURE_PASSED
+    const title = `${this._symbols.finished} End of test: *${this._currentFeature.title}*`
     const payload: ChatPostMessageArguments = {
       channel: this._channel,
-      text: `${this._symbols.finished} End of test${
-        ' - ' + this._currentFeature.title
-      }\n${counts}`,
-      blocks: [
-        {
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: title,
-          },
-        },
-      ],
+      text: '',
+      blocks: [],
       attachments: [
         {
-          title: 'Results\n\n',
-          title_link: resltsUrl,
-          color: FINISHED_COLOR,
-          text: `${counts}\n\n${result}\n`,
-          ts: Date.now().toString(),
-          footer: `Duration: ${runnerStats.duration / 1000}s`
+          color: failedTest ? FAILED_COLOR : SUCCESS_COLOR,
+          text: `${title}\n*${result}* ${counts} <${resultsUrl}|results>\n${this._currentFeature.description}`,
+          footer: `Duration: ${runnerStats.duration / 1000}s`,
         },
       ],
     };
