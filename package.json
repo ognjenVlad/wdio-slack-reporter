@@ -1,48 +1,48 @@
 {
-  "name": "@ognjenvladisavljevic/wdio-slack-reporter",
-  "description": "Reporter from WebdriverIO using Web API to send results to Slack.",
-  "author": {
-    "name": "ognjen Vlad",
-    "email": "ogauzz1@gmail.com"
-  },
-  "license": "MIT",
-  "version": "1.0.56",
-  "main": "build/index.js",
-  "types": "build/index.d.ts",
-  "keywords": [
-    "webdriverio",
-    "wdio",
-    "slack",
-    "reporter",
-    "wdio-reporter",
-    "slack-reporter",
-    "wdio-slack-reporter"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/ognjenVlad/wdio-slack-reporter.git"
-  },
-  "scripts": {
-    "build": "yarn tsc"
-  },
-  "dependencies": {
-    "@slack/types": "^2.0.0",
-    "@slack/web-api": "^6.7.0",
-    "@slack/webhook": "^6.0.0",
-    "@wdio/logger": "^7.5.3",
-    "@wdio/reporter": "7.16.3",
-    "@wdio/types": "7.16.3"
-  },
-  "devDependencies": {
-    "mocha": "9.2.2",
-    "@typescript-eslint/eslint-plugin": "^5.3.1",
-    "@typescript-eslint/parser": "^5.3.1",
-    "eslint": "8.12.0",
+	"name": "@ognjenvladisavljevic/wdio-slack-reporter",
+	"description": "Reporter from WebdriverIO using Web API to send results to Slack.",
+	"author": {
+		"name": "ognjen Vlad",
+		"email": "ogauzz1@gmail.com"
+	},
+	"license": "MIT",
+	"version": "1.0.56",
+	"main": "build/index.js",
+	"types": "build/index.d.ts",
+	"keywords": [
+		"webdriverio",
+		"wdio",
+		"slack",
+		"reporter",
+		"wdio-reporter",
+		"slack-reporter",
+		"wdio-slack-reporter"
+	],
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/ognjenVlad/wdio-slack-reporter.git"
+	},
+	"scripts": {
+		"build": "yarn tsc"
+	},
+	"dependencies": {
+		"@slack/types": "2.7.0",
+		"@slack/web-api": "6.7.2",
+		"@slack/webhook": "6.1.0",
+		"@wdio/logger": "7.19.0",
+		"@wdio/reporter": "7.23.0",
+		"@wdio/types": "7.23.0"
+	},
+	"devDependencies": {
+		"mocha": "9.2.2",
+		"@typescript-eslint/eslint-plugin": "5.3.1",
+		"@typescript-eslint/parser": "5.3.1",
+		"eslint": "8.12.0",
 		"eslint-config-prettier": "8.5.0",
 		"eslint-plugin-json": "3.1.0",
 		"eslint-plugin-prettier": "4.0.0",
-    "prettier": "2.5.1",
-    "ts-node": "^10.7.0",
-    "typescript": "^4.6.3"
-  }
+		"prettier": "2.5.1",
+		"ts-node": "10.7.0",
+		"typescript": "4.6.3"
+	}
 }
