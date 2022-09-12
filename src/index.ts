@@ -57,6 +57,7 @@ class SlackReporter extends WDIOReporter {
   private _username: string;
   private _env: string;
   private _notifyTestFinishMessage: boolean = true;
+  private _uploadScreenshotOfFailedCase: boolean = true;
   private _isSynchronizing: boolean = false;
   private _interval: NodeJS.Timeout;
   private _hasRunnerEnd = false;
@@ -65,6 +66,7 @@ class SlackReporter extends WDIOReporter {
   private _currentFeature?: SuiteStats;
   private _currentScenario: SuiteStats;
   private _runnerStats: RunnerStats;
+  private _screenshotBuffers?: Object = {};
   payload: FeatureOutput;
 
   constructor(options: SlackReporterOptions) {
@@ -108,9 +110,15 @@ class SlackReporter extends WDIOReporter {
       this._notifyTestFinishMessage = options.notifyTestFinishMessage;
     }
 
+    if (options.slackOptions.uploadScreenshotOfFailedCase !== undefined) {
+      this._uploadScreenshotOfFailedCase =
+        options.slackOptions.uploadScreenshotOfFailedCase;
+    }
+
     this._interval = global.setInterval(this.sync.bind(this), 100);
 
     process.on(EVENTS.POST_MESSAGE, this.postMessage.bind(this));
+    process.on(EVENTS.SCREENSHOT, this.uploadFailedTestScreenshot.bind(this));
   }
 
   static getResultsUrl(): string | undefined {
@@ -137,6 +145,22 @@ class SlackReporter extends WDIOReporter {
       });
     });
   }
+  /**
+   * Upload failed test scrteenshot
+   * @param  {WebdriverIO.Browser} browser Parameters used by WebdriverIO.Browser
+   * @param  {{page: Page, options: ScreenshotOptions}} puppeteer Parameters used by Puppeteer
+   * @return {Promise<Buffer>}
+   */
+  static uploadFailedTestScreenshot(step, data: string | Buffer): void {
+    let buffer: Buffer;
+    if (typeof data === 'string') {
+      buffer = Buffer.from(data, 'base64');
+    } else {
+      buffer = data;
+    }
+    process.emit(EVENTS.SCREENSHOT, step, buffer);
+  }
+
   private async postMessage(
     payload: ChatPostMessageArguments
   ): Promise<WebAPICallResult> {
@@ -217,6 +241,15 @@ class SlackReporter extends WDIOReporter {
               });
               this._lastSlackWebAPICallResult = request.isDetailResult ? this._lastSlackWebAPICallResult : result
               log.debug('RESULT', util.inspect(result))
+            }
+            break;
+          }
+          case SLACK_REQUEST_TYPE.WEB_API_UPLOAD: {
+            if (this._client) {
+              result = await this._client.files.upload({
+                ...request.payload,
+                thread_ts: this._lastSlackWebAPICallResult?.ts as string,
+              });
             }
             break;
           }
@@ -319,32 +352,6 @@ class SlackReporter extends WDIOReporter {
     return indents === 0 ? '' : Array(indents).join(DEFAULT_INDENT);
   }
   
-  private createStartPayload(
-    suiteStats: SuiteStats
-  ): ChatPostMessageArguments {
-    const text = `${
-      this._title ? '*Title*: `' + this._title + '`\n' : ''
-    }`;
-    const driver = `${this.getEnviromentCombo(
-      this._runnerStats.capabilities,
-      this._runnerStats.isMultiremote
-    )}`
-    const payload: ChatPostMessageArguments = {
-      channel: this._channel,
-      text: '',
-      blocks: [],
-      attachments: [
-        {
-          color: DEFAULT_COLOR,
-          text: `${this._symbols.start} Starting test: *${suiteStats.title}*\nEnvironment: *${this._env}*\n` + text,
-          footer: `Started by: ${this._username} ${driver}`
-        },
-      ],
-    };
-    
-    return payload;
-  }
-      
   /**
  * Indent a suite based on where how it's nested
  * @param  {StateCount} stateCounts Stat count
@@ -359,21 +366,24 @@ class SlackReporter extends WDIOReporter {
    * @param  {string[]} tests Test titles to display
    * @return {String}     String to the test titles to be displayed in Slack
    */
-  private getTestOutput(suites): Array<any> {
-    let result = []
-    Object.values(suites).forEach(suite => {
-      const text = this.getScenarioOutput(suite)
-      let item = {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `${text}`
-        },
-      }
-      result.push(item)
-    });
+  private getSuiteOutput(suite): ChatPostMessageArguments {
+    const text = this.getScenarioOutput(suite)
+    let item = {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `${text}`
+      },
+    }
     
-    return result
+    const payload: ChatPostMessageArguments = {
+      channel: this._channel,
+      text: `Results`,
+      blocks: [
+        item
+      ],
+    }
+    return payload
   }
   
   private getFeatureResult(suites): any {
@@ -408,7 +418,7 @@ class SlackReporter extends WDIOReporter {
     ];
   }
     
-  private getOrderedSuites() : any {
+  private getOrderedSuites() : Object {
     let orderedSuites = {}
     for (let suite of this._suites) {
         for (const [suiteUid, s] of Object.entries(this.suites)) {
@@ -460,16 +470,24 @@ class SlackReporter extends WDIOReporter {
     const suites = this.getOrderedSuites();
     const failedTest = this.getFeatureResult(suites)
     const result = failedTest ? FEATURE_FAILED : FEATURE_PASSED
-    const title = `${this._symbols.finished} End of test: *${this._currentFeature.title}*`
+    const title = `${this._symbols.finished} *${this._currentFeature.title}*`
+    const driver = `${this.getEnviromentCombo(
+      this._runnerStats.capabilities,
+      this._runnerStats.isMultiremote
+    )}`
     const payload: ChatPostMessageArguments = {
       channel: this._channel,
       text: '',
       blocks: [],
       attachments: [
         {
+          color: DEFAULT_COLOR,
+          text: `${title}\n`
+        },
+        {
           color: failedTest ? FAILED_COLOR : SUCCESS_COLOR,
-          text: `${title}\n*${result}* ${counts} <${resultsUrl}|results>\n${this._currentFeature.description}`,
-          footer: `Duration: ${runnerStats.duration / 1000}s`,
+          text: `*${result}* ${counts} <${resultsUrl}|results>\n`,
+          footer: `Duration: ${runnerStats.duration / 1000}s Started by: ${this._username} ${driver}`,
         },
       ],
     };
@@ -477,18 +495,32 @@ class SlackReporter extends WDIOReporter {
     return payload;
   }
 
-  private createResultThreadPayload(): ChatPostMessageArguments {
+  private sendResultThreadPayload() {
     const suites = this.getOrderedSuites();
-    const output = this.getTestOutput(suites)
-    const payload: ChatPostMessageArguments = {
-      channel: this._channel,
-      text: `Results`,
-      blocks: [
-        ...output
-      ],
-    };
-
-    return payload;
+    let result = []
+    Object.values(suites).forEach(suite => {
+      const output = this.getSuiteOutput(suite)
+      if (output) {
+        this._slackRequestQueue.push({
+          type: SLACK_REQUEST_TYPE.WEB_API_POST_MESSAGE,
+          payload: output as ChatPostMessageArguments,
+          isDetailResult: true,
+        });
+      }
+      if (this._uploadScreenshotOfFailedCase && this._screenshotBuffers[suite.uid]) {
+        this._slackRequestQueue.push({
+          type: SLACK_REQUEST_TYPE.WEB_API_UPLOAD,
+          payload: this.createScreenshotPayload(
+            suite as SuiteStats,
+            this._screenshotBuffers[suite.uid]
+          ) as FilesUploadArguments,
+          isDetailResult: true
+        });
+        this._screenshotBuffers[suite.uid] = null;
+      }
+      
+    });
+    this._screenshotBuffers = {}
   }
 
   onRunnerStart(runnerStats: RunnerStats): void {
@@ -506,21 +538,6 @@ class SlackReporter extends WDIOReporter {
     switch (suiteStats.type) {
       case TEST_TYPES.FEATURE: {
         this._currentFeature = suiteStats
-        if (this._notifyTestStartMessage) {
-          try {
-            if (this._client) {
-              this._slackRequestQueue.push({
-                type: SLACK_REQUEST_TYPE.WEB_API_POST_MESSAGE,
-                payload: this.createStartPayload(
-                  suiteStats
-                ) as ChatPostMessageArguments,
-              });
-            }
-          } catch (error) {
-            log.error(error);
-            throw error;
-          }
-        }
         break
       } case TEST_TYPES.SCENARIO: {
         this._currentScenario = suiteStats
@@ -545,16 +562,7 @@ class SlackReporter extends WDIOReporter {
   // Run for every step
   onTestFail(stepStats: TestStats): void {
     this._stateCounts.failed++;
-    // if (this._notifyFailedCase) {
-    //   if (this._client) {
-    //     this._slackRequestQueue.push({
-    //       type: SLACK_REQUEST_TYPE.WEB_API_POST_MESSAGE,
-    //       payload: this.createFailedTestPayload(
-    //         stepStats
-    //       ) as ChatPostMessageArguments,
-    //     });
-    //   }
-    // }
+
   }
   // onTestRetry(testStats: TestStats): void {}
   onTestSkip(stepStats: TestStats): void {
@@ -577,11 +585,7 @@ class SlackReporter extends WDIOReporter {
             ) as ChatPostMessageArguments,
           });
           // Send results in thread
-          this._slackRequestQueue.push({
-            type: SLACK_REQUEST_TYPE.WEB_API_POST_MESSAGE,
-            payload: this.createResultThreadPayload() as ChatPostMessageArguments,
-            isDetailResult: true,
-          });
+          this.sendResultThreadPayload()
         }
       } catch (error) {
         log.error(error);
@@ -590,6 +594,32 @@ class SlackReporter extends WDIOReporter {
     }
 
     this._hasRunnerEnd = true;
+  }
+
+  private uploadFailedTestScreenshot(suite, buffer: Buffer): void {
+    if (this._client) {
+      if (this._uploadScreenshotOfFailedCase) {
+        this._screenshotBuffers[suite.id]=buffer;
+        return;
+      } else {
+        log.warn(ERROR_MESSAGES.DISABLED_OPTIONS);
+      }
+    } else {
+      log.warn(ERROR_MESSAGES.NOT_USING_WEB_API);
+    }
+  }
+
+  private createScreenshotPayload(
+    suiteStats: SuiteStats,
+    screenshotBuffer: Buffer
+  ): FilesUploadArguments {
+    const payload: FilesUploadArguments = {
+      channels: this._channel,
+      filename: `${suiteStats.title}.png`,
+      filetype: 'png',
+      file: screenshotBuffer,
+    };
+    return payload;
   }
 }
 
@@ -619,6 +649,7 @@ declare global {
           error: any;
         }
       ): boolean;
+      emit(event: typeof EVENTS.SCREENSHOT, step, buffer: Buffer): boolean;
 
       on(
         event: typeof EVENTS.POST_MESSAGE,
@@ -629,6 +660,10 @@ declare global {
       on(
         event: typeof EVENTS.UPLOAD,
         listener: (payload: FilesUploadArguments) => Promise<WebAPICallResult>
+      ): this;
+      on(
+        event: typeof EVENTS.SCREENSHOT,
+        listener: (buffer: Buffer) => void
       ): this;
       once(
         event: typeof EVENTS.RESULT,

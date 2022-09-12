@@ -78,6 +78,7 @@ interface PostMessage {
 interface Upload {
   type: typeof SLACK_REQUEST_TYPE.WEB_API_UPLOAD;
   payload: FilesUploadArguments;
+  isDetailResult?: boolean;
 }
 
 export interface StepOutput {
