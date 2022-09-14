@@ -23,7 +23,6 @@ import {
   ERROR_MESSAGES,
   EVENTS,
   SLACK_REQUEST_TYPE,
-  FINISHED_COLOR,
   SUCCESS_COLOR,
   TEST_TYPES,
   FEATURE_FAILED,
@@ -92,7 +91,6 @@ class SlackReporter extends WDIOReporter {
       failed: options.emojiSymbols?.failed || EMOJI_SYMBOLS.FAILED,
       pending: options.emojiSymbols?.pending || EMOJI_SYMBOLS.PENDING,
       start: options.emojiSymbols?.start || EMOJI_SYMBOLS.ROKET,
-      finished: options.emojiSymbols?.finished || EMOJI_SYMBOLS.CHECKERED_FLAG,
       watch: options.emojiSymbols?.watch || EMOJI_SYMBOLS.STOPWATCH,
     };
     this._title = options.title;
@@ -470,7 +468,7 @@ class SlackReporter extends WDIOReporter {
     const suites = this.getOrderedSuites();
     const failedTest = this.getFeatureResult(suites)
     const result = failedTest ? FEATURE_FAILED : FEATURE_PASSED
-    const title = `${this._symbols.finished} *${this._currentFeature.title}*`
+    const title = `*${this._currentFeature.title}*`
     const driver = `${this.getEnviromentCombo(
       this._runnerStats.capabilities,
       this._runnerStats.isMultiremote
@@ -482,7 +480,7 @@ class SlackReporter extends WDIOReporter {
       attachments: [
         {
           color: DEFAULT_COLOR,
-          text: `${title}\n`
+          text: `${title} | Environment: *${this._env}*`
         },
         {
           color: failedTest ? FAILED_COLOR : SUCCESS_COLOR,

@@ -3,7 +3,6 @@ export const SLACK_ICON_URL = 'https://webdriver.io/img/webdriverio.png';
 export const SUCCESS_COLOR = '#36a64f';
 export const FAILED_COLOR = '#dc3545';
 export const DEFAULT_COLOR = '#D3D3D3';
-export const FINISHED_COLOR = '#4366c7';
 export const DEFAULT_INDENT = '\t';
 export const EMOJI_SYMBOLS = {
   PASSED: '✅',
@@ -11,7 +10,6 @@ export const EMOJI_SYMBOLS = {
   PENDING: '❔',
   FAILED: '❌',
   ROKET: ':rocket:',
-  CHECKERED_FLAG: ':checkered_flag:',
   STOPWATCH: ':stopwatch:',
 } as const;
 
